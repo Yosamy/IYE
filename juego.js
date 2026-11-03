@@ -6,7 +6,14 @@
 // Estado de la sesión de juego.
 const Juego = {
   prendas: 0,
+  rechazos: 0,
+  sostenido: null,   // { el, obj, mano } — el objeto que el jugador tiene tomado
+  volando: [],       // objetos que van entrando a la ranura
 };
+
+function objetoPorId(id) {
+  return CONFIG.objetos.find(o => o.id === id);
+}
 
 // Devuelve el % de descuento que corresponde a una cantidad de prendas.
 function cuponPara(prendas) {
@@ -36,11 +43,12 @@ AFRAME.registerComponent('panel', {
     this.textura.anisotropy = 4;
     const material = new THREE.MeshBasicMaterial({ map: this.textura, transparent: true });
     this.el.setObject3D('mesh', new THREE.Mesh(new THREE.PlaneGeometry(this.data.ancho, this.data.alto), material));
-    if (this.el.lineasPendientes) this.dibujar(this.el.lineasPendientes);
+    if (this.el.lineasPendientes) this.dibujar(this.el.lineasPendientes, this.el.fondoPendiente);
   },
 
   // lineas: [{ texto, tam, color, negrita, resalte }]. "tam" en píxeles sobre 1024 de ancho.
-  dibujar(lineas) {
+  // fondo (opcional) cambia el color del panel solo para este dibujo.
+  dibujar(lineas, fondo) {
     const ctx = this.ctx;
     const W = this.canvas.width;
     const H = this.canvas.height;
@@ -48,7 +56,7 @@ AFRAME.registerComponent('panel', {
     const margen = 40;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = this.data.fondo;
+    ctx.fillStyle = fondo || this.data.fondo;
     ctx.beginPath();
     ctx.roundRect(0, 0, W, H, 36);
     ctx.fill();
@@ -103,10 +111,11 @@ function crearPanel(padre, { ancho, alto, fondo, posicion = '0 0 0', rotacion = 
   // Si el panel aún no está en la escena, guarda el texto y lo dibuja al iniciar.
   return {
     el,
-    dibujar(lineas) {
+    dibujar(lineas, fondo) {
       el.lineasPendientes = lineas;
+      el.fondoPendiente = fondo;
       const panel = el.components && el.components.panel;
-      if (panel && panel.canvas) panel.dibujar(lineas);
+      if (panel && panel.canvas) panel.dibujar(lineas, fondo);
     },
   };
 }
@@ -203,13 +212,16 @@ function crearCanasto() {
     const z = fila === 0 ? -0.11 : 0.12;
 
     const el = document.createElement('a-entity');
-    el.classList.add('clickable', 'objeto');
+    el.classList.add('objeto');
     el.dataset.id = obj.id;
     el.setAttribute('position', `${x} 0.01 ${z}`);
     el.appendChild(crearForma(obj));
 
-    // Zona invisible más grande para que sea fácil apuntarle.
+    // Zona invisible más grande para que sea fácil apuntarle. Es lo que detecta el láser;
+    // sus clics suben hasta el objeto.
     const zona = document.createElement('a-box');
+    zona.classList.add('clickable');
+    el.zona = zona;
     zona.setAttribute('width', 0.22);
     zona.setAttribute('height', 0.24);
     zona.setAttribute('depth', 0.2);
@@ -223,9 +235,127 @@ function crearCanasto() {
     });
     etiqueta.dibujar([{ texto: obj.nombre, tam: 190, negrita: true, color: '#111111' }]);
 
+    el.addEventListener('click', e => tomar(el, e.detail && e.detail.cursorEl));
+    el.addEventListener('mouseenter', () => { if (Juego.sostenido?.el !== el) el.object3D.scale.setScalar(1.15); });
+    el.addEventListener('mouseleave', () => { if (Juego.sostenido?.el !== el) el.object3D.scale.setScalar(1); });
+
     canasto.appendChild(el);
+    el.inicio = new THREE.Vector3(x, 0.01, z);
   });
 }
+
+// ---------------------------------------------------------------------
+//  Tomar y depositar
+// ---------------------------------------------------------------------
+
+// Después de cambiar qué objetos son "clickable", los láser tienen que enterarse.
+function refrescarRayos() {
+  document.querySelectorAll('[raycaster]').forEach(e => e.components.raycaster && e.components.raycaster.refreshObjects());
+}
+
+// Vibración corta del control (solo en el Quest).
+function vibrar(mano, fuerza, ms) {
+  const gamepad = mano && mano.components && mano.components['tracked-controls']?.controller?.gamepad;
+  const motor = gamepad && gamepad.hapticActuators && gamepad.hapticActuators[0];
+  if (motor) motor.pulse(fuerza, ms);
+}
+
+function tomar(el, cursorEl) {
+  if (Juego.sostenido) devolverAlCanasto();
+  // Con mouse el cursor es la escena; con el Quest es el control que apuntó.
+  const mano = cursorEl && cursorEl.hasAttribute('laser-controls') ? cursorEl : null;
+  el.zona.classList.remove('clickable');
+  el.object3D.scale.setScalar(1);
+  refrescarRayos();
+  Juego.sostenido = { el, obj: objetoPorId(el.dataset.id), mano };
+  vibrar(mano, 0.3, 40);
+  mostrarInstruccion();
+}
+
+function devolverAlCanasto() {
+  const { el } = Juego.sostenido;
+  el.object3D.position.copy(el.inicio);
+  el.zona.classList.add('clickable');
+  Juego.sostenido = null;
+  refrescarRayos();
+  mostrarInstruccion();
+}
+
+function depositar() {
+  const t = CONFIG.textos;
+  if (!Juego.sostenido) {
+    mostrarMensaje([{ texto: t.sinObjeto, tam: 70, negrita: true, color: '#0b1f1a' }], '#ffd84d');
+    return;
+  }
+  const { el, obj, mano } = Juego.sostenido;
+
+  if (obj.tipo !== 'textil') {
+    Juego.rechazos++;
+    mostrarMensaje([
+      { texto: t.rechazo, tam: 100, negrita: true },
+      { texto: t.rechazoDetalle.replace('{objeto}', obj.nombre), tam: 74 },
+    ], '#c62f35');
+    vibrar(mano, 1, 250);
+    devolverAlCanasto();
+    return;
+  }
+
+  Juego.prendas++;
+  Juego.sostenido = null;
+  Juego.volando.push({ el, desde: el.object3D.position.clone(), t: 0 });
+  dibujarPantalla();
+  mostrarMensaje([
+    { texto: t.recibida, tam: 110, negrita: true, color: '#0b1f1a' },
+    { texto: t.recibidaDetalle.replace('{objeto}', obj.nombre), tam: 74, color: '#0b1f1a' },
+  ], '#2fe0a6');
+  vibrar(mano, 0.5, 80);
+  mostrarInstruccion();
+}
+
+// Mensaje grande al lado derecho de la máquina; se borra solo.
+function mostrarMensaje(lineas, fondo) {
+  const el = Juego.mensaje.el;
+  Juego.mensaje.dibujar(lineas, fondo);
+  el.setAttribute('visible', true);
+  clearTimeout(Juego.timerMensaje);
+  Juego.timerMensaje = setTimeout(() => el.setAttribute('visible', false), 2800);
+}
+
+// Instrucción al lado izquierdo: cambia según si tiene algo tomado.
+function mostrarInstruccion() {
+  const t = CONFIG.textos;
+  const texto = Juego.sostenido ? t.instruccionDepositar : t.instruccionTomar;
+  Juego.instruccion.dibujar([{ texto, tam: 88, negrita: true }]);
+}
+
+// Cada cuadro: el objeto tomado sigue a la mano (o a la cámara con mouse),
+// y los objetos depositados se deslizan hacia la ranura.
+AFRAME.registerComponent('mover-objetos', {
+  init() {
+    this.v = new THREE.Vector3();
+    this.canasto = document.querySelector('#canasto').object3D;
+    this.camara = document.querySelector('#camara').object3D;
+    this.ranura = document.querySelector('#ranura').object3D;
+  },
+  tick(_, dt) {
+    const s = Juego.sostenido;
+    if (s) {
+      if (s.mano && this.el.is('vr-mode')) s.mano.object3D.localToWorld(this.v.set(0, -0.03, -0.22));
+      else this.camara.localToWorld(this.v.set(0.32, -0.3, -0.6));
+      this.canasto.worldToLocal(this.v);
+      s.el.object3D.position.copy(this.v);
+    }
+    for (const f of Juego.volando) {
+      f.t = Math.min(1, f.t + dt / 450);
+      this.ranura.getWorldPosition(this.v);
+      this.canasto.worldToLocal(this.v);
+      f.el.object3D.position.lerpVectors(f.desde, this.v, f.t);
+      f.el.object3D.scale.setScalar(1 - f.t * 0.7);
+      if (f.t === 1) f.el.setAttribute('visible', false);
+    }
+    Juego.volando = Juego.volando.filter(f => f.t < 1);
+  },
+});
 
 // Percheros de fondo para que parezca tienda.
 function crearPercheros() {
@@ -270,8 +400,20 @@ document.addEventListener('DOMContentLoaded', () => {
     crearPanel(document.querySelector('#ranura-texto'), { ancho: 0.8, alto: 0.12, fondo: '#0b1f1a' })
       .dibujar([{ texto: `▼  ${CONFIG.textos.ranura}  ▼`, tam: 100, negrita: true, color: '#2fe0a6' }]);
 
+    Juego.mensaje = crearPanel(document.querySelector('#mensaje'), { ancho: 0.62, alto: 0.42 });
+    Juego.mensaje.el.setAttribute('visible', false);
+    Juego.instruccion = crearPanel(document.querySelector('#instruccion'), { ancho: 0.62, alto: 0.42, fondo: '#1d3c78' });
+    mostrarInstruccion();
+
+    const ranura = document.querySelector('#ranura');
+    ranura.addEventListener('click', depositar);
+    ranura.addEventListener('mouseenter', () => ranura.setAttribute('color', '#1f6b55'));
+    ranura.addEventListener('mouseleave', () => ranura.setAttribute('color', '#0b1f1a'));
+
     crearCanasto();
     crearPercheros();
+    escena.setAttribute('mover-objetos', '');
+    setTimeout(refrescarRayos, 0);
 
     // En computador la vista parte mirando un poco hacia abajo, para ver el canasto.
     const mirada = document.querySelector('#camara').components['look-controls'];

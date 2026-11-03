@@ -36,6 +36,13 @@ window.CONFIG = {
     cupon: "Tu cupón",
     sinCupon: "Aún sin cupón",
     ranura: "Deposita aquí",
+    instruccionTomar: "1. Apunta a un objeto del canasto y aprieta el gatillo (o haz clic)",
+    instruccionDepositar: "2. Ahora apunta a la ranura y aprieta el gatillo (o haz clic)",
+    recibida: "✓ Recibida",
+    recibidaDetalle: "{objeto} quedó registrada en tu pasaporte",
+    rechazo: "✗ No se acepta",
+    rechazoDetalle: "{objeto}: la máquina solo recibe ropa y textiles",
+    sinObjeto: "Primero toma un objeto del canasto",
   },
 
   // Objetos del canasto. tipo: "textil" se acepta, "no-apto" se rechaza.
