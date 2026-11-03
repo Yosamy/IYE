@@ -53,7 +53,7 @@ window.CONFIG = {
   },
 
   // Objetos del canasto. tipo: "textil" se acepta, "no-apto" se rechaza.
-  // forma: prenda | pantalon | botella | lata | cargador
+  // forma: prenda | pantalon | gorro | botella | lata | cargador
   objetos: [
     { id: "polera",     nombre: "Polera",     tipo: "textil",  forma: "prenda",   color: "#e24b4b" },
     { id: "jeans",      nombre: "Jeans",      tipo: "textil",  forma: "pantalon", color: "#3b5fa8" },
@@ -66,6 +66,9 @@ window.CONFIG = {
     { id: "vestido",    nombre: "Vestido",    tipo: "textil",  forma: "prenda",   color: "#f0b429" },
     { id: "bufanda",    nombre: "Bufanda",    tipo: "textil",  forma: "pantalon", color: "#2f9e8f" },
     { id: "cargador",   nombre: "Cargador",   tipo: "no-apto", forma: "cargador", color: "#fafafa" },
+    { id: "gorro",      nombre: "Gorro",      tipo: "textil",  forma: "gorro",    color: "#d9534f" },
+    { id: "short",      nombre: "Short",      tipo: "textil",  forma: "pantalon", color: "#8fb3d9" },
+    { id: "pijama",     nombre: "Pijama",     tipo: "textil",  forma: "prenda",   color: "#a78bd4" },
     { id: "calcetines", nombre: "Calcetines", tipo: "textil",  forma: "prenda",   color: "#222222" },
   ],
 };

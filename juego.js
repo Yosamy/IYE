@@ -188,6 +188,10 @@ function crearForma(obj) {
     case 'pantalon':
       agregar('a-box', { width: 0.11, height: 0.05, depth: 0.2, color: obj.color, position: '0 0.025 0' });
       break;
+    case 'gorro':
+      agregar('a-sphere', { radius: 0.08, 'theta-length': 90, color: obj.color, position: '0 0 0' });
+      agregar('a-sphere', { radius: 0.025, color: '#ffffff', position: '0 0.085 0' });
+      break;
     case 'botella':
       agregar('a-cylinder', { radius: 0.035, height: 0.2, color: obj.color, opacity: 0.75, position: '0 0.1 0' });
       agregar('a-cylinder', { radius: 0.016, height: 0.035, color: '#1e5fbf', position: '0 0.215 0' });
@@ -226,14 +230,17 @@ function crearCanasto() {
   pared(`${base.ancho / 2} 0.04 0`, 0.02, base.fondo);
   pared(`${-base.ancho / 2} 0.04 0`, 0.02, base.fondo);
 
-  // Filas de 6 objetos; se ajusta solo si cambian la cantidad en config.js.
-  const porFila = 6;
-  const filas = Math.ceil(CONFIG.objetos.length / porFila);
-  const sepFilas = filas > 2 ? 0.16 : 0.23;
+  // Hasta 6 objetos por fila, repartidos parejo; se ajusta solo si cambia
+  // la cantidad de objetos en config.js.
+  const total = CONFIG.objetos.length;
+  const filas = Math.ceil(total / 6);
+  const porFila = Math.ceil(total / filas);
+  const sepCols = Math.min(0.3, 1.4 / Math.max(1, porFila - 1));
+  const sepFilas = filas > 2 ? 0.17 : 0.23;
   CONFIG.objetos.forEach((obj, i) => {
     const fila = Math.floor(i / porFila);
     const col = i % porFila;
-    const x = (col - (porFila - 1) / 2) * 0.25;
+    const x = (col - (porFila - 1) / 2) * sepCols;
     const z = (fila - (filas - 1) / 2) * sepFilas;
 
     const el = document.createElement('a-entity');
