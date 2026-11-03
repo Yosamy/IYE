@@ -7,6 +7,7 @@
 const Juego = {
   prendas: 0,
   rechazos: 0,
+  intentosSobreTope: 0,
   sostenido: null,   // { el, obj, mano } — el objeto que el jugador tiene tomado
   volando: [],       // objetos que van entrando a la ranura
 };
@@ -52,7 +53,6 @@ AFRAME.registerComponent('panel', {
     const ctx = this.ctx;
     const W = this.canvas.width;
     const H = this.canvas.height;
-    const escala = CONFIG.tamanoLetra;
     const margen = 40;
 
     ctx.clearRect(0, 0, W, H);
@@ -61,26 +61,17 @@ AFRAME.registerComponent('panel', {
     ctx.roundRect(0, 0, W, H, 36);
     ctx.fill();
 
-    // Corta cada línea para que quepa en el ancho del panel.
-    const filas = [];
-    for (const l of lineas) {
-      const tam = (l.tam || 48) * escala;
-      ctx.font = `${l.negrita ? 'bold ' : ''}${tam}px system-ui, Arial, sans-serif`;
-      const palabras = String(l.texto).split(' ');
-      let actual = '';
-      for (const p of palabras) {
-        const prueba = actual ? actual + ' ' + p : p;
-        if (ctx.measureText(prueba).width > W - margen * 2 && actual) {
-          filas.push({ ...l, texto: actual, tam });
-          actual = p;
-        } else {
-          actual = prueba;
-        }
-      }
-      filas.push({ ...l, texto: actual, tam });
+    // Corta cada línea para que quepa en el ancho del panel. Si el texto no cabe
+    // en el alto (por ejemplo con letra más grande en config.js), lo achica.
+    let filas, altoTotal;
+    let escala = CONFIG.tamanoLetra;
+    for (let intento = 0; intento < 5; intento++) {
+      filas = this.cortarLineas(lineas, escala, W - margen * 2);
+      altoTotal = filas.reduce((s, f) => s + f.tam * 1.35, 0);
+      if (altoTotal <= H - margen) break;
+      escala *= (H - margen) / altoTotal;
     }
 
-    const altoTotal = filas.reduce((s, f) => s + f.tam * 1.35, 0);
     let y = (H - altoTotal) / 2;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -98,6 +89,28 @@ AFRAME.registerComponent('panel', {
       y += alto;
     }
     this.textura.needsUpdate = true;
+  },
+
+  cortarLineas(lineas, escala, anchoMax) {
+    const ctx = this.ctx;
+    const filas = [];
+    for (const l of lineas) {
+      const tam = (l.tam || 48) * escala;
+      ctx.font = `${l.negrita ? 'bold ' : ''}${tam}px system-ui, Arial, sans-serif`;
+      const palabras = String(l.texto).split(' ');
+      let actual = '';
+      for (const p of palabras) {
+        const prueba = actual ? actual + ' ' + p : p;
+        if (ctx.measureText(prueba).width > anchoMax && actual) {
+          filas.push({ ...l, texto: actual, tam });
+          actual = p;
+        } else {
+          actual = prueba;
+        }
+      }
+      filas.push({ ...l, texto: actual, tam });
+    }
+    return filas;
   },
 });
 
@@ -131,6 +144,16 @@ function dibujarPantalla() {
     { texto: `${t.prendas}: ${Juego.prendas} / ${CONFIG.topePrendas}`, tam: 90, negrita: true },
     { texto: `${t.cupon}: ${descuento ? descuento + ' %' : t.sinCupon}`, tam: 70, negrita: true, color: '#ffd84d' },
   ];
+  const siguiente = CONFIG.tramos.find(tr => tr.desde > Juego.prendas);
+  if (Juego.prendas >= CONFIG.topePrendas) {
+    lineas.push({ texto: t.topeAlcanzado, tam: 50, negrita: true, color: '#0b1f1a', resalte: '#ffd84d' });
+  } else if (CONFIG.mostrarSiguienteTramo && siguiente) {
+    const n = siguiente.desde - Juego.prendas;
+    lineas.push({
+      texto: t.siguienteTramo.replace('{n}', n === 1 ? '1 prenda' : `${n} prendas`).replace('{d}', siguiente.descuento),
+      tam: 46, color: '#cfe9e1',
+    });
+  }
   if (CONFIG.mostrarEscalaAntes || Juego.prendas > 0) {
     lineas.push({ texto: t.escalaTitulo, tam: 44, color: '#cfe9e1' });
     for (const tr of CONFIG.tramos) {
@@ -203,13 +226,15 @@ function crearCanasto() {
   pared(`${base.ancho / 2} 0.04 0`, 0.02, base.fondo);
   pared(`${-base.ancho / 2} 0.04 0`, 0.02, base.fondo);
 
-  // 2 filas de 6 objetos. La fila de atrás va un poco más alta para que se vea.
+  // Filas de 6 objetos; se ajusta solo si cambian la cantidad en config.js.
   const porFila = 6;
+  const filas = Math.ceil(CONFIG.objetos.length / porFila);
+  const sepFilas = filas > 2 ? 0.16 : 0.23;
   CONFIG.objetos.forEach((obj, i) => {
     const fila = Math.floor(i / porFila);
     const col = i % porFila;
     const x = (col - (porFila - 1) / 2) * 0.25;
-    const z = fila === 0 ? -0.11 : 0.12;
+    const z = (fila - (filas - 1) / 2) * sepFilas;
 
     const el = document.createElement('a-entity');
     el.classList.add('objeto');
@@ -288,6 +313,17 @@ function depositar() {
     return;
   }
   const { el, obj, mano } = Juego.sostenido;
+
+  if (Juego.prendas >= CONFIG.topePrendas) {
+    Juego.intentosSobreTope++;
+    mostrarMensaje([
+      { texto: t.topeTitulo, tam: 90, negrita: true, color: '#0b1f1a' },
+      { texto: t.topeDetalle.replace('{tope}', CONFIG.topePrendas), tam: 72, color: '#0b1f1a' },
+    ], '#ffd84d');
+    vibrar(mano, 0.6, 150);
+    devolverAlCanasto();
+    return;
+  }
 
   if (obj.tipo !== 'textil') {
     Juego.rechazos++;
@@ -400,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
     crearPanel(document.querySelector('#ranura-texto'), { ancho: 0.8, alto: 0.12, fondo: '#0b1f1a' })
       .dibujar([{ texto: `▼  ${CONFIG.textos.ranura}  ▼`, tam: 100, negrita: true, color: '#2fe0a6' }]);
 
-    Juego.mensaje = crearPanel(document.querySelector('#mensaje'), { ancho: 0.62, alto: 0.42 });
+    Juego.mensaje = crearPanel(document.querySelector('#mensaje'), { ancho: 0.7, alto: 0.5 });
     Juego.mensaje.el.setAttribute('visible', false);
     Juego.instruccion = crearPanel(document.querySelector('#instruccion'), { ancho: 0.62, alto: 0.42, fondo: '#1d3c78' });
     mostrarInstruccion();

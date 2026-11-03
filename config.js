@@ -21,6 +21,9 @@ window.CONFIG = {
   // true = la pantalla muestra la escala completa antes del primer depósito.
   mostrarEscalaAntes: true,
 
+  // true = la pantalla dice cuántas prendas faltan para el siguiente tramo.
+  mostrarSiguienteTramo: true,
+
   // Multiplicador del tamaño de letra en VR. 1 = normal, 1.3 = 30 % más grande.
   tamanoLetra: 1.0,
 
@@ -43,6 +46,10 @@ window.CONFIG = {
     rechazo: "✗ No se acepta",
     rechazoDetalle: "{objeto}: la máquina solo recibe ropa y textiles",
     sinObjeto: "Primero toma un objeto del canasto",
+    siguienteTramo: "Te falta {n} para llegar al {d} %",
+    topeAlcanzado: "Llegaste al máximo de esta visita",
+    topeTitulo: "Máquina completa",
+    topeDetalle: "El máximo es {tope} prendas por visita. Aprieta Terminar para recibir tu cupón.",
   },
 
   // Objetos del canasto. tipo: "textil" se acepta, "no-apto" se rechaza.
